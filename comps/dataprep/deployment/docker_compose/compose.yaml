@@ -13,6 +13,7 @@ include:
   - ../../../third_parties/vdms/deployment/docker_compose/compose.yaml
   - ../../../third_parties/tgi/deployment/docker_compose/compose.yaml
   - ../../../third_parties/tei/deployment/docker_compose/compose.yaml
+  - ../../../third_parties/vllm/deployment/docker_compose/compose.yaml
   - ../../../third_parties/arangodb/deployment/docker_compose/compose.yaml
 
 services:
@@ -385,7 +386,7 @@ services:
     depends_on:
       arango-vector-db:
         condition: service_healthy
-      tgi-gaudi-server:
+      vllm-server:
         condition: service_healthy
       tei-embedding-serving:
         condition: service_healthy
