@@ -64,12 +64,12 @@ class OpeaArangoRetriever(OpeaComponent):
     def __init__(self, name: str, description: str, config: dict = None):
         super().__init__(name, ServiceType.RETRIEVER.name.lower(), description, config)
 
-        self.initialize_arangodb()
+        self._initialize_client()
 
         if SUMMARIZER_ENABLED:
-            self.initialize_llm()
+            self._initialize_llm()
 
-    def initialize_llm(self):
+    def _initialize_llm(self):
         """Initialize the language model for summarization if enabled."""
         if OPENAI_API_KEY and OPENAI_CHAT_ENABLED:
             if logflag:
@@ -104,7 +104,7 @@ class OpeaArangoRetriever(OpeaComponent):
         else:
             raise HTTPException(status_code=400, detail="No LLM environment variables are set, cannot generate graphs.")
 
-    def initialize_arangodb(self):
+    def _initialize_client(self):
         """Initialize the ArangoDB connection."""
         self.client = ArangoClient(hosts=ARANGO_URL)
         sys_db = self.client.db(name="_system", username=ARANGO_USERNAME, password=ARANGO_PASSWORD, verify=True)
@@ -143,7 +143,33 @@ class OpeaArangoRetriever(OpeaComponent):
         traversal_query: str,
         distance_strategy: str,
     ) -> dict[str, Any]:
-        """Fetch the neighborhoods of matched documents"""
+        """Fetch the neighborhoods of matched documents from an ArangoDB graph.
+        This method retrieves neighborhoods of documents based on a specified graph traversal
+        strategy, distance scoring, and other parameters. It supports different starting points
+        for the traversal, such as "chunk", "edge", or "node".
+
+        If `traversal_query` is provided, it will override the default traversal behavior.
+
+        Args:
+            db (StandardDatabase): The ArangoDB database instance.
+            keys (list[str]): A list of document keys to search for.
+            graph_name (str): The name of the graph to traverse.
+            search_start (str): The starting point for the traversal. Options are "chunk", "edge", or "node".
+            query_embedding (list[float]): The embedding vector used for similarity scoring.
+            collection_name (str): The name of the collection containing the documents.
+            traversal_max_depth (int): The maximum depth for the graph traversal.
+            traversal_max_returned (int): The maximum number of results to return per traversal.
+            traversal_score_threshold (float): The minimum score threshold for including results.
+            traversal_query (str): A custom traversal query to override the default behavior.
+            distance_strategy (str): The distance scoring strategy. Options are "COSINE" or "EUCLIDEAN_DISTANCE".
+        Returns:
+            dict[str, Any]: A dictionary where keys are document keys and values are their neighborhoods.
+        Raises:
+            HTTPException: If an invalid distance strategy is provided.
+        Notes:
+            - The function dynamically constructs an AQL query based on the input parameters.
+            - If `logflag` is enabled, the constructed query and bind variables are logged.
+        """
 
         if traversal_max_depth < 1:
             traversal_max_depth = 1
@@ -247,7 +273,19 @@ class OpeaArangoRetriever(OpeaComponent):
         return neighborhoods
 
     def generate_summarization_prompt(self, query: str, text: str) -> str:
-        """Generate a prompt for summarization."""
+        """Generate a summarization prompt based on the provided query and text.
+        This method creates a structured prompt to summarize a document retrieved 
+        through vector similarity matching. The summarization is guided by the 
+        provided query and optionally leverages a 'RELATED INFORMATION' section 
+        within the document to enhance relevance.
+
+        Args:
+            query (str): The query string used as the foundation for the summary.
+            text (str): The document text to be summarized.
+        Returns:
+            str: A formatted prompt string instructing how to summarize the document.
+        """
+
         return f"""
             I've performed vector similarity on the following
             query to retrieve most relevant documents: '{query}' 

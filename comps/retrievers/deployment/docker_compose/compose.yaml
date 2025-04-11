@@ -210,9 +210,9 @@ services:
       vdms-vector-db:
         condition: service_healthy
 
-  retriever-arango:
+  retriever-arangodb:
     extends: retriever
-    container_name: retriever-arango
+    container_name: retriever-arangodb
     depends_on:
       - arango-vector-db
       - tei-embedding-service
