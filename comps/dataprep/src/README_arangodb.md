@@ -2,11 +2,12 @@
 
 ## 🚀Start Microservice with Docker
 
-### Build Docker Image
+### Start ArangoDB Server
+
+To launch ArangoDB locally, first ensure you have docker installed. Then, you can launch the database with the following docker command.
 
 ```bash
-cd ../../
-docker build -t opea/dataprep:latest --build-arg https_proxy=$https_proxy --build-arg http_proxy=$http_proxy -f comps/dataprep/src/Dockerfile .
+docker run -d -p 8529:8529 -e ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD} arangodb/arangodb:latest
 ```
 
 ### Set Environment Variables
@@ -19,22 +20,34 @@ export ARANGO_URL=${your_arango_url}
 export ARANGO_USERNAME=${your_arango_username}
 export ARANGO_PASSWORD=${your_arango_password}
 export ARANGO_DB_NAME=${your_db_name}
+export VLLM_ENDPOINT=${your_vllm_endpoint}
+export VLLM_MODEL_ID=${your_vllm_model_id}
+export VLLM_API_KEY=${your_vllm_api_key}
+export TEI_EMBEDDING_ENDPOINT=${your_tei_embedding_endpoint}
+export HUGGINGFACEHUB_API_TOKEN=${your_huggingface_api_token}
 ```
-### Start ArangoDB Server
 
-To launch ArangoDB locally, first ensure you have docker installed. Then, you can launch the database with the following docker command.
+### Build Docker Image
 
 ```bash
-docker run -d   --name arango-vector-db  -p 8529:8529   -e ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD}   arangodb/arangodb:latest   --experimental-vector-index=true
+cd ~/GenAIComps/
+docker build -t opea/dataprep:latest --build-arg https_proxy=$https_proxy --build-arg http_proxy=$http_proxy -f comps/dataprep/src/Dockerfile .
 ```
 
-### Run Docker with CLI
+### Run via CLI
 
 ```bash
-docker run -d --name="dataprep-arango-service" -p 6007:5000 --ipc=host -e http_proxy=$http_proxy -e https_proxy=$https_proxy -e ARANGODB_URL="http://localhost:8529"  opea/dataprep-arango:latest -e DATAPREP_COMPONENT_NAME="OPEA_DATAPREP_ARANGODB"
+docker run -d --name="dataprep-arango-service" -p 6007:5000 --ipc=host -e http_proxy=$http_proxy -e https_proxy=$https_proxy -e ARANGODB_URL="http://localhost:8529" -e ... -e DATAPREP_COMPONENT_NAME="OPEA_DATAPREP_ARANGODB" opea/dataprep:latest 
 ```
 
-see below for additional environment variables that can be set.
+### Run Docker with Docker Compose
+
+```bash
+cd ~/GenAIComps/comps/dataprep/deployment/docker_compose/
+docker compose up dataprep-arangodb -d
+```
+
+See below for additional environment variables that can be set.
 
 
 ## 🚀3. Consume Dataprep Service
@@ -51,10 +64,10 @@ An ArangoDB Graph is created from the documents provided to the microservice. Th
 curl -X POST \
     -H "Content-Type: multipart/form-data" \
     -F "files=@./file1.txt" \
-    http://localhost:6007/v1/dataprep
+    http://localhost:6007/v1/dataprep/ingest
 ```
 
-By default, the microservice will create embeddings for the documents if embedding environment variables are specified. You can specify `-F "create_embeddings=false"` to skip document embedding creation.
+By default, the microservice will create embeddings for the documents if embedding environment variables are specified.
 
 You can also specify the `chunk_size` and `chunk_overlap` with the following parameters:
 
@@ -64,7 +77,7 @@ curl -X POST \
     -F "files=@./file1.txt" \
     -F "chunk_size=1500" \
     -F "chunk_overlap=100" \
-    http://localhost:6007/v1/dataprep
+    http://localhost:6007/v1/dataprep/ingest
 ```
 
 We support table extraction from pdf documents. You can specify `process_table` and `table_strategy` with the following parameters:
@@ -79,7 +92,7 @@ curl -X POST \
     -F "files=@./your_file.pdf" \
     -F "process_table=true" \
     -F "table_strategy=hq" \
-    http://localhost:6007/v1/dataprep
+    http://localhost:6007/v1/dataprep/ingest
 ```
 
 ---
@@ -99,6 +112,7 @@ ArangoDB Graph Insertion configuration
 - `ARANGO_USE_GRAPH_NAME`: If set to True, the microservice will use the graph name specified in the environment variable `ARANGO_GRAPH_NAME`. If set to False, the file name will be used as the graph name. Defaults to `True`.
 
 vLLM Configuration
+- `VLLM_API_KEY`: The API key for the vLLM service. Defaults to `"EMPTY"`.
 - `VLLM_ENDPOINT`: The endpoint for the VLLM service. Defaults to `http://localhost:80`.
 - `VLLM_MODEL_ID`: The model ID for the VLLM service. Defaults to `Intel/neural-chat-7b-v3-3`.
 - `VLLM_MAX_NEW_TOKENS`: The maximum number of new tokens to generate. Defaults to `512`.
@@ -107,17 +121,16 @@ vLLM Configuration
 - `VLLM_TIMEOUT`: The timeout for the VLLM service. Defaults to `600`.
 
 Text Embeddings Inferencing Configuration
-**Note**: This is optional functionality to generate embeddings for documents (i.e text chunks). 
 - `TEI_EMBEDDING_ENDPOINT`: The endpoint for the TEI service.
-- `HUGGINGFACEHUB_API_TOKEN`: The API token for the Hugging Face Hub.
 - `TEI_EMBED_MODEL`: The model to use for the TEI service. Defaults to `BAAI/bge-base-en-v1.5`.
+- `HUGGINGFACEHUB_API_TOKEN`: The API token for the Hugging Face Hub.
 - `EMBED_SOURCE_DOCUMENTS`: If set to True, the microservice will embed the source documents. Defaults to `True`.
-- `EMBED_NODES`: If set to True, the microservice will embed the nodes extracted from the source documents. Defaults to `False`.
-- `EMBED_RELATIONSHIPS`: If set to True, the microservice will embed the relationships extracted from the source documents. Defaults to `False`.
+- `EMBED_NODES`: If set to True, the microservice will embed the nodes extracted from the source documents. Defaults to `True`.
+- `EMBED_RELATIONSHIPS`: If set to True, the microservice will embed the relationships extracted from the source documents. Defaults to `True`.
 
 OpenAI Configuration:
 **Note**: This configuration can replace the VLLM and TEI services for text generation and embeddings.
-- `OPENAI_API_KEY`: The API key for the OpenAI service.
+- `OPENAI_API_KEY`: The API key for the OpenAI service. If not set, the microservice will not use the OpenAI service.
 - `OPENAI_CHAT_MODEL`: The chat model to use for the OpenAI service. Defaults to `gpt-4o`.
 - `OPENAI_CHAT_TEMPERATURE`: The temperature for the OpenAI service. Defaults to `0`.
 - `OPENAI_EMBED_MODEL`: The embedding model to use for the OpenAI service. Defaults to `text-embedding-3-small`.
@@ -131,9 +144,5 @@ OpenAI Configuration:
 - `ALLOWED_RELATIONSHIPS`: Specifies which relationship types are allowed in the graph. Defaults to an empty list, allowing all relationship types.
 - `NODE_PROPERTIES`: If True, the LLM can extract any node properties from text. Alternatively, a list of valid properties can be provided for the LLM to extract, restricting extraction to those specified. Defaults to `["description"]`.
 - `RELATIONSHIP_PROPERTIES`: If True, the LLM can extract any relationship properties from text. Alternatively, a list of valid properties can be provided for the LLM to extract, restricting extraction to those specified. Defaults to `["description"]`.
-
-Parsing Configuration:
-- `PROCESS_TABLE`: If set to True, the microservice will process tables in the document. Defaults to `False`.
-- `TABLE_STRATEGY`: The strategy to understand tables for table retrieval. Defaults to `fast`.
-- `CHUNK_SIZE`: The size of the chunks to process. Defaults to `1500`.
-- `CHUNK_OVERLAP`: The overlap between chunks. Defaults to `100`.
+- `ENTITY_CAPITALIZATION_STRATEGY`: The capitalization strategy applied on the node and edge keys. Can be "lower", "upper", or "none". Defaults to "none". Useful as a basic Entity Resolution technique to avoid duplicates based on capitalization.
+- `INCLUDE_SOURCE`: If set to True, the microservice will include the chunks of text from the source documents in the graph. Defaults to `True`. If `False`, only the entities and relationships will be included in the graph.

@@ -1,4 +1,4 @@
-# Copyright (C) 2024 Intel Corporation
+# Copyright (C) 2025 ArangoDB Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import json
@@ -12,6 +12,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_arangodb import ArangoGraph
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings, HuggingFaceHubEmbeddings
 from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_experimental.graph_transformers import LLMGraphTransformer
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -58,8 +59,8 @@ TEI_EMBEDDING_ENDPOINT = os.getenv("TEI_EMBEDDING_ENDPOINT")
 TEI_EMBED_MODEL = os.getenv("TEI_EMBED_MODEL", "BAAI/bge-base-en-v1.5")
 HUGGINGFACEHUB_API_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 EMBED_SOURCE_DOCUMENTS = os.getenv("EMBED_SOURCE_DOCUMENTS", "true").lower() == "true"
-EMBED_NODES = os.getenv("EMBED_NODES", "false").lower() == "true"
-EMBED_RELATIONSHIPS = os.getenv("EMBED_RELATIONSHIPS", "false").lower() == "true"
+EMBED_NODES = os.getenv("EMBED_NODES", "true").lower() == "true"
+EMBED_RELATIONSHIPS = os.getenv("EMBED_RELATIONSHIPS", "true").lower() == "true"
 
 # OpenAI configuration (alternative to TEI/VLLM)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -88,6 +89,19 @@ class OpeaArangoDataprep(OpeaComponent):
         super().__init__(name, ServiceType.DATAPREP.name.lower(), description, config)
         self.upload_folder = "./uploaded_files/"
 
+        self.llm_transformer: LLMGraphTransformer
+        self.embeddings: Embeddings
+
+        self._initialize_llm()
+        self._initialize_embeddings()
+        self._initialize_client()
+
+        if not self.check_health():
+            logger.error("OpeaArangoDataprep health check failed.")
+
+    def _initialize_llm(self):
+        """Initialize the LLM model & LLMGraphTransformer object."""
+
         allowed_nodes = ALLOWED_NODES
         allowed_relationships = ALLOWED_RELATIONSHIPS
         node_properties = NODE_PROPERTIES
@@ -105,10 +119,6 @@ class OpeaArangoDataprep(OpeaComponent):
 
         if relationship_properties and isinstance(relationship_properties, str):
             relationship_properties = relationship_properties.split(",")
-
-        ##############################
-        # Prompt Template (optional) #
-        ##############################
 
         prompt_template = None
         if SYSTEM_PROMPT_PATH is not None:
@@ -132,10 +142,6 @@ class OpeaArangoDataprep(OpeaComponent):
                 logger.error(f"Could not set custom Prompt: {e}")
 
         ignore_tool_usage = False
-
-        #############################
-        # Text Generation Inference #
-        #############################
 
         if OPENAI_API_KEY and OPENAI_CHAT_ENABLED:
             if logflag:
@@ -189,44 +195,24 @@ class OpeaArangoDataprep(OpeaComponent):
 
                 raise HTTPException(status_code=500, detail=f"Failed to initialize LLMGraphTransformer: {e}")
 
-        ########################################
-        # Text Embeddings Inference (optional) #
-        ########################################
+    def _initialize_embeddings(self):
+        """Initialize the embeddings model."""
 
-        if OPENAI_API_KEY and OPENAI_EMBED_ENABLED:
-            # Use OpenAI embeddings
-            self.embeddings = OpenAIEmbeddings(
-                model=OPENAI_EMBED_MODEL,
-                dimensions=OPENAI_EMBED_DIMENSION,
-            )
-        elif TEI_EMBEDDING_ENDPOINT and HUGGINGFACEHUB_API_TOKEN:
-            # Use TEI endpoint service
+        if TEI_EMBEDDING_ENDPOINT and HUGGINGFACEHUB_API_TOKEN:
             self.embeddings = HuggingFaceHubEmbeddings(
                 model=TEI_EMBEDDING_ENDPOINT,
                 huggingfacehub_api_token=HUGGINGFACEHUB_API_TOKEN,
             )
         elif TEI_EMBED_MODEL:
-            # Use local embedding model
             self.embeddings = HuggingFaceBgeEmbeddings(model_name=TEI_EMBED_MODEL)
         else:
             raise HTTPException(
                 status_code=400, detail="No embeddings environment variables are set, cannot generate embeddings."
             )
 
-        ############
-        # ArangoDB #
-        ############
-
-        # Initialize ArangoDB
-        self.initialize_arangodb()
-
-        # Perform health check
-        health_status = self.check_health()
-        if not health_status:
-            logger.error("OpeaArangoDataprep health check failed.")
-
-    def initialize_arangodb(self):
+    def _initialize_client(self):
         """Initialize the ArangoDB connection."""
+
         self.client = ArangoClient(hosts=ARANGO_URL)
         sys_db = self.client.db(name="_system", username=ARANGO_USERNAME, password=ARANGO_PASSWORD, verify=True)
 
@@ -239,6 +225,7 @@ class OpeaArangoDataprep(OpeaComponent):
 
     def check_health(self) -> bool:
         """Checks the health of the retriever service."""
+
         if logflag:
             logger.info("[ check health ] start to check health of ArangoDB")
         try:
@@ -252,6 +239,7 @@ class OpeaArangoDataprep(OpeaComponent):
 
     def ingest_data_to_arango(self, doc_path: DocPath):
         """Ingest document to ArangoDB."""
+
         path = doc_path.path
         if logflag:
             logger.info(f"Parsing document {path}")
@@ -304,7 +292,7 @@ class OpeaArangoDataprep(OpeaComponent):
         if logflag:
             logger.info(f"Creating graph {graph_name}.")
 
-        self.graph = ArangoGraph(db=self.db, generate_schema_on_init=False, schema_include_examples=False)
+        graph = ArangoGraph(db=self.db, generate_schema_on_init=False, schema_include_examples=False)
 
         for i, text in enumerate(chunks):
             document = Document(page_content=text, metadata={"file_name": path, "chunk_index": i})
@@ -317,7 +305,7 @@ class OpeaArangoDataprep(OpeaComponent):
             if logflag:
                 logger.info(f"Chunk {i}: inserting into ArangoDB")
 
-            self.graph.add_graph_documents(
+            graph.add_graph_documents(
                 graph_documents=[graph_doc],
                 include_source=INCLUDE_SOURCE,
                 graph_name=graph_name,
