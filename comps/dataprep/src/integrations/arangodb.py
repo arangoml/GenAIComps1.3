@@ -247,6 +247,7 @@ class OpeaArangoDataprep(OpeaComponent):
         ############
         # Chunking #
         ############
+
         if path.endswith(".html"):
             headers_to_split_on = [
                 ("h1", "Header 1"),
@@ -283,6 +284,7 @@ class OpeaArangoDataprep(OpeaComponent):
         ################################
         # Graph generation & insertion #
         ################################
+
         if ARANGO_USE_GRAPH_NAME:
             graph_name = ARANGO_GRAPH_NAME
         else:
@@ -292,7 +294,7 @@ class OpeaArangoDataprep(OpeaComponent):
         if logflag:
             logger.info(f"Creating graph {graph_name}.")
 
-        graph = ArangoGraph(db=self.db, generate_schema_on_init=False, schema_include_examples=False)
+        graph = ArangoGraph(db=self.db, generate_schema_on_init=False)
 
         for i, text in enumerate(chunks):
             document = Document(page_content=text, metadata={"file_name": path, "chunk_index": i})
@@ -325,7 +327,7 @@ class OpeaArangoDataprep(OpeaComponent):
                 logger.info(f"Chunk {i}: processed")
 
         if logflag:
-            logger.info("The graph is built")
+            logger.info(f"Graph {graph_name} created with {len(chunks)} chunks.")
 
         return graph_name
 
