@@ -34,7 +34,7 @@ opentelemetry-sdk==1.27.0
 pathway
 pgvector
 prometheus-fastapi-instrumentator
-protobuf==4.24.2
+protobuf==4.25.8
 psycopg2-binary
 pydantic
 pymupdf
