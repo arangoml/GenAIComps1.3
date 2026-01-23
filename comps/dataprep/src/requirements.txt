@@ -49,7 +49,7 @@ pgvector==0.2.5
 Pillow
 pinecone-client
 prometheus-fastapi-instrumentator
-protobuf==4.24.2
+protobuf==7.34.0rc1
 psycopg2
 pymupdf
 pyspark
