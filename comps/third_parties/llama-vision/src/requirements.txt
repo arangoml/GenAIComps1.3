@@ -11,5 +11,5 @@ prometheus-fastapi-instrumentator
 pydantic==2.9.2
 pydub
 shortuuid
-transformers==4.48.0
+transformers==5.0.0rc3
 uvicorn
